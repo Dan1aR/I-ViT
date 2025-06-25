@@ -85,7 +85,7 @@ class SymmetricQuantFunction(Function):
 
         scale = specified_scale
 
-        zero_point = torch.tensor(0.).cuda()
+        zero_point = torch.tensor(0.).to(x.device)
 
         n = 2 ** (k - 1) - 1
         new_quant_x = linear_quantize(x, scale, zero_point, is_weight=is_weight)
@@ -171,8 +171,8 @@ def batch_frexp(inputs, max_bit=31):
 
     output_e = float(max_bit) - output_e
 
-    return torch.from_numpy(output_m).cuda().view(shape_of_input), \
-           torch.from_numpy(output_e).cuda().view(shape_of_input)
+    return torch.from_numpy(output_m).to(inputs.device).view(shape_of_input), \
+           torch.from_numpy(output_e).to(inputs.device).view(shape_of_input)
 
 
 class fixedpoint_mul(Function):
@@ -218,29 +218,39 @@ class fixedpoint_mul(Function):
             ctx.z_scaling_factor = z_scaling_factor
 
             z_int = torch.round(pre_act / pre_act_scaling_factor)
+            
+            # force CPU compute if using MPS
+            pre_act_scaling_factor = pre_act_scaling_factor.to("cpu")
+            z_scaling_factor = z_scaling_factor.to("cpu")
+
             _A = pre_act_scaling_factor.type(torch.double)
             _B = (z_scaling_factor.type(torch.float)).type(torch.double)
-            new_scale = _A / _B
+            new_scale = _A / _B  # this is on cpu
             # print(new_scale)
             # exit()
             new_scale = reshape(new_scale)
 
             m, e = batch_frexp(new_scale)
+            # force CPU compute 
+            _z_int_device = z_int.device
+            z_int = z_int.cpu()
             output = z_int.type(torch.double) * m.type(torch.double)
-            output = torch.round(output / (2.0 ** e))
+            output = torch.round(output / (2.0 ** e)).type(torch.float)
+            output = output.to(_z_int_device)
 
             if identity is not None:
                 # needs addition of identity activation
                 wx_int = torch.round(identity / identity_scaling_factor)
 
-                _A = identity_scaling_factor.type(torch.double)
-                _B = (z_scaling_factor.type(torch.float)).type(torch.double)
+                _A = identity_scaling_factor.cpu().type(torch.double)
+                _B = (z_scaling_factor.cpu().type(torch.float)).type(torch.double)
                 new_scale = _A / _B
                 new_scale = reshape(new_scale)
 
                 m1, e1 = batch_frexp(new_scale)
-                output1 = wx_int.type(torch.double) * m1.type(torch.double)
-                output1 = torch.round(output1 / (2.0 ** e1))
+                output1 = wx_int.cpu().type(torch.double) * m1.type(torch.double)
+                output1 = torch.round(output1 / (2.0 ** e1)).type(torch.float)
+                output1 = output1.to(output.device)
 
                 output = output1 + output
 

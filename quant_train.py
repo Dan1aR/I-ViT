@@ -255,10 +255,10 @@ def main():
         # remember best acc@1 and save checkpoint
         is_best = acc1 > args.best_acc1
         args.best_acc1 = max(acc1, args.best_acc1)
-        if is_best:
-            # record the best epoch
-            best_epoch = epoch
-            torch.save(model.state_dict(), os.path.join(args.output_dir, 'checkpoint.pth.tar'))
+        # if is_best:
+        # record the best epoch
+        best_epoch = epoch
+        torch.save(model.state_dict(), os.path.join(args.output_dir, 'checkpoint.pth.tar'))
         logging.info(f'Acc at epoch {epoch}: {acc1}')
         logging.info(f'Best acc at epoch {best_epoch}: {args.best_acc1}')
 
@@ -278,6 +278,8 @@ def train(args, train_loader, model, criterion, optimizer, epoch, loss_scaler, m
 
     end = time.time()
     for i, (data, target) in enumerate(train_loader):
+        if i > 3:
+            break
         # measure data loading time
         data_time.update(time.time() - end)
 
@@ -299,7 +301,7 @@ def train(args, train_loader, model, criterion, optimizer, epoch, loss_scaler, m
         loss_scaler(loss, optimizer, clip_grad=max_norm,
                     parameters=model.parameters(), create_graph=is_second_order)
 
-        torch.cuda.synchronize()
+        # torch.cuda.synchronize()
         if model_ema is not None:
             model_ema.update(model)
 
@@ -327,6 +329,8 @@ def validate(args, val_loader, model, criterion, device):
 
     end = time.time()
     for i, (data, target) in enumerate(val_loader):
+        if i > 3:
+            break
         data = data.to(device, non_blocking=True)
         target = target.to(device, non_blocking=True)
 
